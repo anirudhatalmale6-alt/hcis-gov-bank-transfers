@@ -1,0 +1,7 @@
+# Windows line endings for anything Windows runs. Without this Git ships LF
+# and a double-clicked .bat behaves unpredictably. Verify after publishing by
+# downloading the zip and running `file` on a .bat - it must say CRLF.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.txt text eol=crlf
+*.sql text eol=crlf

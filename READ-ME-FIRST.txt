@@ -1,0 +1,98 @@
+============================================================
+ HCIS - BANK TRANSFERS, for the government box
+ 7 October 2026
+============================================================
+
+  Double-click            INSTALL.bat
+  Then double-click       STEP-2-reload-api.bat
+
+  That is the whole job. Everything below is explanation.
+
+
+------------------------------------------------------------
+ WHAT THIS IS
+------------------------------------------------------------
+
+Everything built for the monthly bank transfer files, which until now has
+existed only on the office server. The gov box is the one that gets cloned to
+the production server, so this has to be here before that clone is taken or
+none of it reaches production.
+
+It adds:
+
+  * where each care giver is paid - bank, account number, and the name the
+    account is in
+  * what the transfer file calls each bank. The file uses three-letter codes
+    (ABS, MCB, SSB) and several of the accountant's numeric codes map to one
+    of them - all six Seychelles Commercial branches become SSB
+  * a record of what was ACTUALLY sent to the banks each month
+  * a history of every change to a care giver's account details
+  * the Bank Transfers screen, under Payroll
+
+
+------------------------------------------------------------
+ WHAT IT DOES NOT INSTALL
+------------------------------------------------------------
+
+The job that emails Finance at the payroll cut-off is NOT in here.
+
+It runs on the office server as a scheduled Linux task, and this is a Windows
+machine - a Linux scheduled job does not copy across, it has to be rebuilt as
+a Windows scheduled task. That is a separate piece of work, and it depends on
+a decision that has not been made yet: which machine sends Finance the
+payroll after launch.
+
+So after this, the screen works and the database is ready. The transfer files
+continue to be produced on the office server until that is settled.
+
+
+------------------------------------------------------------
+ WHY THE SCREEN WILL LOOK EMPTY AT FIRST
+------------------------------------------------------------
+
+It will say "no transfer files have been built for this month yet".
+
+That is correct, not a fault. The screen shows what was actually sent to the
+banks, and nothing has been sent from this box yet. It fills in when the bank
+details are loaded and the files are produced.
+
+The wording is deliberate - "not built yet" is a different thing from
+"nobody was paid", and the screen says which.
+
+
+------------------------------------------------------------
+ WHAT IT CHECKS BEFORE TOUCHING ANYTHING
+------------------------------------------------------------
+
+It stops, changing nothing, if:
+
+  * this is not HCIS, or the tables it builds on are missing
+  * the list of banks is empty - the screen would have nothing to offer
+  * payment_runs has no primary key. The record of what was sent has to
+    point at that table, and without a key the database refuses in language
+    nobody can act on. This says it in a sentence instead.
+
+Then it backs up, and refuses to go on without one.
+
+Safe to run twice, or five times. Every change is written so that applying it
+again does nothing.
+
+
+------------------------------------------------------------
+ IT DOES NOT TOUCH config.js
+------------------------------------------------------------
+
+That file is this server's own settings - the address the browser talks to
+and this box's key. It is deliberately not in the package, and the installer
+checks it is still in place afterwards rather than assuming.
+
+
+------------------------------------------------------------
+ IF SOMETHING GOES WRONG
+------------------------------------------------------------
+
+It stops at the step that failed, tells you which one, and prints the exact
+command to put the database back as it was. The steps before it stand; the
+failed one wrote nothing.
+
+Send me a photo of the window. Everything in it is written to be read.
