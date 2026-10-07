@@ -6,7 +6,34 @@
   Double-click            INSTALL.bat
   Then double-click       STEP-2-reload-api.bat
 
+  And while you are on the box, one more, which changes nothing:
+
+  Double-click            CHECK-THIS-BOX.bat
+
   That is the whole job. Everything below is explanation.
+
+
+------------------------------------------------------------
+ CHECK-THIS-BOX.bat - ten seconds, and it decides a design
+------------------------------------------------------------
+
+Reads only. Changes nothing. Send me a photo of the window.
+
+It tells me whether this machine can run Python, which is the one answer
+that decides how the payroll job gets here after the 29th.
+
+The payroll calculation - pension, withholding, loans, the days-or-hours
+rule - exists once, in Python, on the office server. The bank transfer files
+call that same code, which is why the banks and Finance can never be told
+different numbers.
+
+If this box can run Python, that job moves across as the SAME code and there
+is still one calculation. If it cannot, the calculation has to be written a
+second time for Windows - and two copies of a payroll calculation drift apart
+eventually. The day they do, the banks pay one figure and Finance is told
+another.
+
+So it is worth the ten seconds.
 
 
 ------------------------------------------------------------
