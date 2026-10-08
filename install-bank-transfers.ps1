@@ -129,15 +129,26 @@ if ($absent) {
 # a sentence, before anything has been written. Found by running this against
 # a database where the key genuinely was absent.
 #
-# Asked only if the table is already here. On a box that has never had the
-# payroll-runs feature, 42b creates it with its primary key a moment from now,
-# and 'public.payment_runs'::regclass on a table that does not exist is an
-# ERROR, not a 'no' - which would stop the install with the wrong explanation.
+# Asked only if the table is already here - on a box that has never had the
+# payroll-runs feature, 42b creates it with its primary key a moment from now.
+#
+# to_regclass() in BOTH places, and that is the whole point of this comment.
+# Guarding a 'public.payment_runs'::regclass cast behind a CASE does NOT work:
+# the cast is a constant, so it is resolved when the statement is PLANNED,
+# before any branch is evaluated, and the statement fails with
+#
+#     ERROR: relation "public.payment_runs" does not exist
+#
+# whatever the CASE would have decided. I shipped exactly that on 8 October and
+# it stopped the install on the government box. to_regclass returns NULL for a
+# missing object instead of raising, so it is safe to ask before the table is
+# there. Checked three ways: absent -> yes, present with a key -> yes, present
+# without one -> no.
 $pk = (& $psql -tA -U $DbUser -d $Db -c @"
 SELECT CASE
          WHEN to_regclass('public.payment_runs') IS NULL THEN 'yes'
          WHEN EXISTS (SELECT 1 FROM pg_constraint
-                       WHERE conrelid = 'public.payment_runs'::regclass
+                       WHERE conrelid = to_regclass('public.payment_runs')
                          AND contype = 'p') THEN 'yes'
          ELSE 'no'
        END
