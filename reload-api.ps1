@@ -169,36 +169,92 @@ if ($real.Code -eq 200 -and $bogus.Code -eq 200) {
 #  A green tick about a different thing is worse than no tick at all, so this
 #  asks specifically for payment_run_transfers.
 #
-#  PostgREST publishes the shape it is serving at its root. Asking there needs
-#  no sign-in, which matters because since September the anonymous role can
-#  read no table at all - so a direct GET would be refused whether the table
-#  exists or not, and could not tell the two apart.
+#  HOW TO ASK, AND THE WAY THAT DOES NOT WORK
+#
+#  The first version of this read PostgREST's published shape at its root,
+#  reasoning that it needed no sign-in. That was wrong, and it reported a
+#  perfectly good install as broken on the government box on 8 October.
+#
+#  PostgREST builds that document FOR THE CALLING ROLE. Unauthenticated, the
+#  caller is the anonymous role, and since September the anonymous role can
+#  read no table at all - so the document lists nothing. Proved on the office
+#  server, where everything demonstrably works:
+#
+#      NOT LISTED: payment_run_transfers
+#      NOT LISTED: care_workers        <- obviously present and in daily use
+#
+#  I had already written that a direct GET could not tell "missing" from
+#  "forbidden", and then picked a method with exactly the same blind spot.
+#
+#  A direct GET *can* tell them apart - by the error, not the status alone:
+#
+#    in the schema cache, anon not allowed -> 401  42501  permission denied for table X
+#    not in the schema cache               -> 404  42P01  relation "X" does not exist
+#
+#  So 401/42501 is the PASS here, and it proves two things at once: the API
+#  knows the table, and it is NOT readable without signing in. A 200 would
+#  mean the payroll is world-readable and is treated as a failure, loudly.
 # ---------------------------------------------------------------------------
 Say ''
 Say 'Asking the API whether it can see the bank transfer tables...'
 
-$btOk = $false
-$btWhy = ''
-try {
-    $spec = Invoke-WebRequest -Uri 'http://localhost:3000/' -UseBasicParsing -TimeoutSec 20
-    $text = [string]$spec.Content
-    $hasReal  = $text -match 'payment_run_transfers'
-    # The control. If a table that cannot exist also appears to be "found",
-    # this test proves nothing and must not be reported as a pass.
-    $hasBogus = $text -match 'zz_no_such_table_zz'
-    if ($hasReal -and -not $hasBogus) {
-        $btOk = $true
-    } elseif ($hasBogus) {
-        $btWhy = 'This check cannot tell right from wrong on this box - it also "found" a table that does not exist. Send me a photo; do not treat this as a pass.'
-    } else {
-        $btWhy = 'The API cannot see payment_run_transfers. Either INSTALL.bat has not been run on this box, or it did not finish - check its window for an error. Run INSTALL.bat first.'
+function Ask-Table($name) {
+    $uri = 'http://localhost:3000/' + $name + '?limit=1'
+    try {
+        $r = Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 20
+        return @{ Code = [int]$r.StatusCode; Body = [string]$r.Content }
+    } catch {
+        # Same two-host dance as Ask-Column above: PowerShell 5.1 and 7 do not
+        # hand back a failed response the same way.
+        $resp = $_.Exception.Response
+        $code = 0
+        if ($resp) { try { $code = [int]$resp.StatusCode } catch { $code = 0 } }
+        $body = ''
+        if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+            $body = $_.ErrorDetails.Message
+        } elseif ($resp -and ($resp | Get-Member -Name GetResponseStream -MemberType Method)) {
+            try {
+                $sr = New-Object IO.StreamReader($resp.GetResponseStream())
+                $body = $sr.ReadToEnd()
+            } catch { $body = '' }
+        }
+        if (-not $code -and -not $body) { $body = $_.Exception.Message }
+        return @{ Code = $code; Body = $body }
     }
-} catch {
-    $btWhy = 'Could not ask the API what it is serving: ' + $_.Exception.Message
 }
 
-if ($btOk) { Say '  The bank transfer tables are visible to the API.' 'Green' }
-else       { Say ('  ' + $btWhy) 'Red' }
+$btOk  = $false
+$btWhy = ''
+$btReal  = Ask-Table 'payment_run_transfers'
+# The control: a table that cannot exist. It MUST come back 404/42P01. If it
+# comes back looking like the real one, this test cannot tell right from wrong
+# and must not be reported as a pass.
+$btBogus = Ask-Table 'zz_no_such_table_zz'
+
+$realKnown   = ($btReal.Code -eq 401 -or $btReal.Code -eq 403) -and ($btReal.Body -match '42501')
+$realMissing = ($btReal.Code -eq 404) -or ($btReal.Body -match '42P01') -or ($btReal.Body -match 'PGRST205')
+$bogusMissing= ($btBogus.Code -eq 404) -or ($btBogus.Body -match '42P01') -or ($btBogus.Body -match 'PGRST205')
+
+if (-not $bogusMissing) {
+    $btWhy = 'This check cannot tell right from wrong on this box - a table that does not exist did not come back as missing (it answered ' + $btBogus.Code + '). Send me a photo; do not treat this as a pass.'
+} elseif ($btReal.Code -eq 200) {
+    $btWhy = 'SERIOUS: payment_run_transfers can be read WITHOUT signing in. Do not deploy. Send me a photo of this window now.'
+} elseif ($realKnown) {
+    $btOk = $true
+} elseif ($realMissing) {
+    $btWhy = 'The API cannot see payment_run_transfers. Either INSTALL.bat has not been run on this box, or it did not finish - check its window for an error. Run INSTALL.bat first.'
+} elseif ($btReal.Code -eq 0) {
+    $btWhy = 'Could not reach the API at all: ' + $btReal.Body
+} else {
+    $btWhy = 'Unexpected answer asking for payment_run_transfers: ' + $btReal.Code + ' ' + $btReal.Body
+}
+
+if ($btOk) {
+    Say '  The API knows payment_run_transfers, and refuses it without a sign-in.' 'Green'
+    Say '  (Both halves matter - it is there, and it is not public.)' 'Green'
+} else {
+    Say ('  ' + $btWhy) 'Red'
+}
 
 # Both must pass. The old check alone has already misled somebody once.
 $ok = $ok -and $btOk
