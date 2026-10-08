@@ -158,18 +158,65 @@ if ($real.Code -eq 200 -and $bogus.Code -eq 200) {
     $why = ('The API answered ' + $real.Code + ': ' + $real.Body)
 }
 
+# ---------------------------------------------------------------------------
+#  AND THE THING THIS PACKAGE ACTUALLY INSTALLED
+#
+#  The check above came from the September package and tests the sign-in token
+#  work. It is still a valid test - of September. It says NOTHING about the
+#  bank transfer tables, and on 8 October it printed a confident "GOOD" on a
+#  box where the bank transfer install had just FAILED on a bad password.
+#
+#  A green tick about a different thing is worse than no tick at all, so this
+#  asks specifically for payment_run_transfers.
+#
+#  PostgREST publishes the shape it is serving at its root. Asking there needs
+#  no sign-in, which matters because since September the anonymous role can
+#  read no table at all - so a direct GET would be refused whether the table
+#  exists or not, and could not tell the two apart.
+# ---------------------------------------------------------------------------
+Say ''
+Say 'Asking the API whether it can see the bank transfer tables...'
+
+$btOk = $false
+$btWhy = ''
+try {
+    $spec = Invoke-WebRequest -Uri 'http://localhost:3000/' -UseBasicParsing -TimeoutSec 20
+    $text = [string]$spec.Content
+    $hasReal  = $text -match 'payment_run_transfers'
+    # The control. If a table that cannot exist also appears to be "found",
+    # this test proves nothing and must not be reported as a pass.
+    $hasBogus = $text -match 'zz_no_such_table_zz'
+    if ($hasReal -and -not $hasBogus) {
+        $btOk = $true
+    } elseif ($hasBogus) {
+        $btWhy = 'This check cannot tell right from wrong on this box - it also "found" a table that does not exist. Send me a photo; do not treat this as a pass.'
+    } else {
+        $btWhy = 'The API cannot see payment_run_transfers. Either INSTALL.bat has not been run on this box, or it did not finish - check its window for an error. Run INSTALL.bat first.'
+    }
+} catch {
+    $btWhy = 'Could not ask the API what it is serving: ' + $_.Exception.Message
+}
+
+if ($btOk) { Say '  The bank transfer tables are visible to the API.' 'Green' }
+else       { Say ('  ' + $btWhy) 'Red' }
+
+# Both must pass. The old check alone has already misled somebody once.
+$ok = $ok -and $btOk
+if (-not $btOk -and $why -eq '') { $why = $btWhy }
+if (-not $btOk -and $why -ne '') { $why = $why + '  ALSO: ' + $btWhy }
+
 Say ''
 if ($ok) {
     Say '============================================================'
-    Say ' GOOD - the API is serving the new shape.' 'Green'
-    Say ' Now run deploy-frontend.ps1, then Ctrl+F5 in the browser.'
+    Say ' GOOD - the API can see the bank transfer tables.' 'Green'
+    Say ' Sign in and look under Payroll for Bank Transfers.'
     Say '============================================================'
 } else {
     Say '============================================================'
     if ($real.Code -eq 0) {
         Say ' The API could not be reached.' 'Red'
     } else {
-        Say ' The API is running but is NOT serving the new shape.' 'Red'
+        Say ' The API is running but the install is NOT complete.' 'Red'
     }
     Say ''
     Say (' ' + $why) 'Red'
