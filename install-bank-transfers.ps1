@@ -39,7 +39,13 @@ $ErrorActionPreference = 'Stop'
 function Say($m, $c = 'Gray') { Write-Host "  $m" -ForegroundColor $c }
 function Rule { Write-Host '  ------------------------------------------------------------' }
 
+# 42b comes first and is numbered that way on purpose. The payroll-runs
+# feature was built on the office server in September and was never in the
+# recovery package, so the government box does not have it - INSTALL.bat
+# stopped on exactly that on 8 October. 45 points a foreign key at
+# payment_runs, so it has to exist BEFORE 43-46, not after.
 $MIGRATIONS = @(
+    '42b_payment_runs.sql',
     '43_care_giver_bank_details.sql',
     '44_seft_codes_and_no_branch.sql',
     '45_transfers_recorded_and_bank_changes.sql',
@@ -85,9 +91,12 @@ if ($LASTEXITCODE -ne 0) { Say "Cannot reach the database $Db on this machine." 
 # through - particularly ref_bank, which is where the 25 banks and the
 # accountant's own codes live, and which the first change points a foreign key
 # at.
+# payment_runs is NOT in this list any more. It used to be, and that is what
+# stopped the install on the government box - correctly, because the table
+# really was absent. It is now created by 42b above, so requiring it here would
+# refuse to run the very change that supplies it.
 $need = @{
     'care_workers'  = 'the care giver records'
-    'payment_runs'  = 'the monthly payroll runs'
     'ref_bank'      = 'the list of banks with the accountant''s codes'
     'system_users'  = 'the staff accounts'
 }
@@ -119,11 +128,19 @@ if ($absent) {
 # which is accurate and tells the reader nothing. Checking here turns it into
 # a sentence, before anything has been written. Found by running this against
 # a database where the key genuinely was absent.
+#
+# Asked only if the table is already here. On a box that has never had the
+# payroll-runs feature, 42b creates it with its primary key a moment from now,
+# and 'public.payment_runs'::regclass on a table that does not exist is an
+# ERROR, not a 'no' - which would stop the install with the wrong explanation.
 $pk = (& $psql -tA -U $DbUser -d $Db -c @"
-SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_constraint
-                          WHERE conrelid = 'public.payment_runs'::regclass
-                            AND contype = 'p')
-            THEN 'yes' ELSE 'no' END
+SELECT CASE
+         WHEN to_regclass('public.payment_runs') IS NULL THEN 'yes'
+         WHEN EXISTS (SELECT 1 FROM pg_constraint
+                       WHERE conrelid = 'public.payment_runs'::regclass
+                         AND contype = 'p') THEN 'yes'
+         ELSE 'no'
+       END
 "@ 2>&1).Trim()
 if ($pk -ne 'yes') {
     Rule
